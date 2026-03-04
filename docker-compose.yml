@@ -6,11 +6,12 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: chamascore
-      POSTGRES_PASSWORD: chamascore123
+      POSTGRES_PASSWORD: pass123
       POSTGRES_DB: chamascore
       POSTGRES_HOST_AUTH_METHOD: trust
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf
     ports:
       - "5432:5432"
     healthcheck:
@@ -34,6 +35,72 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  airflow-init:
+    image: apache/airflow:2.7.3
+    container_name: chamascore-airflow-init
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow123@airflow-postgres/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__WEBSERVER__SECRET_KEY: chamascore-airflow-secret
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin123
+      _AIRFLOW_WWW_USER_EMAIL: admin@chamascore.co.ke
+      _AIRFLOW_WWW_USER_FIRSTNAME: Admin
+      _AIRFLOW_WWW_USER_LASTNAME: ChamaScore
+      _AIRFLOW_WWW_USER_ROLE: Admin
+    command: version
+    restart: on-failure
+
+  airflow-webserver:
+    image: apache/airflow:2.7.3
+    container_name: chamascore-airflow-web
+    restart: unless-stopped
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow123@airflow-postgres/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__WEBSERVER__SECRET_KEY: chamascore-airflow-secret
+      CHAMASCORE_DB_URL: postgresql://chamascore:pass123@postgres:5432/chamascore
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./backend/app:/opt/airflow/app
+      - airflow_logs:/opt/airflow/logs
+    ports:
+      - "8080:8080"
+    command: webserver
+
+  airflow-scheduler:
+    image: apache/airflow:2.7.3
+    container_name: chamascore-airflow-scheduler
+    restart: unless-stopped
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow123@airflow-postgres/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__WEBSERVER__SECRET_KEY: chamascore-airflow-secret
+      CHAMASCORE_DB_URL: postgresql://chamascore:pass123@postgres:5432/chamascore
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./backend/app:/opt/airflow/app
+      - airflow_logs:/opt/airflow/logs
+    command: scheduler
 
 volumes:
   postgres_data:
