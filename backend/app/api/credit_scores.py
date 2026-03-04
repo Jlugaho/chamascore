@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import date
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from datetime import date, timedelta
 from app.core.database import get_db
 from app.core.security import get_current_user_id
 from app.models.models import Group, Contribution, Loan, Meeting, MeetingAttendance, GroupMember, CreditScore
 from app.schemas.schemas import CreditScoreOut, FeatureDetail
 from app.scoring.heuristic_model import HeuristicCreditScorer, engineer_features_from_raw
-import uuid
+import uuid, json
 
 router = APIRouter()
 scorer = HeuristicCreditScorer()
@@ -17,7 +18,6 @@ def get_raw_data(group_id: str, db: Session) -> dict:
     if not group:
         return None
 
-    from datetime import datetime, timedelta
     today = date.today()
     age_days = (today - group.created_date).days
 
@@ -72,16 +72,27 @@ async def get_credit_score(group_id: str, user_id: str = Depends(get_current_use
     recommendations = scorer.generate_recommendations(breakdown)
     log = scorer.generate_calculation_log(features, breakdown, score)
 
-    credit_score = CreditScore(
+    features_json = {k: {"value": v.value, "rating": v.rating} for k, v in breakdown.items()}
+
+    # Upsert — insert or update if today's score already exists
+    stmt = pg_insert(CreditScore).values(
         id=str(uuid.uuid4()),
         group_id=group_id,
         score_date=date.today(),
         score_value=score,
         score_band=band,
-        features_json={k: {"value": v.value, "rating": v.rating} for k, v in breakdown.items()},
+        features_json=json.dumps(features_json),
         calculation_log=log,
+    ).on_conflict_do_update(
+        constraint='uq_group_score_date',
+        set_=dict(
+            score_value=score,
+            score_band=band,
+            features_json=json.dumps(features_json),
+            calculation_log=log,
+        )
     )
-    db.add(credit_score)
+    db.execute(stmt)
     db.commit()
 
     return CreditScoreOut(
