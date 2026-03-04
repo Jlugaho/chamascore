@@ -1,0 +1,41 @@
+services:
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: chamascore-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: chamascore
+      POSTGRES_PASSWORD: chamascore123
+      POSTGRES_DB: chamascore
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chamascore"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  airflow-postgres:
+    image: postgres:15-alpine
+    container_name: chamascore-airflow-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow123
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  airflow_db_data:
+  airflow_logs:
