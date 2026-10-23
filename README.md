@@ -124,6 +124,7 @@ cd frontend
 npm install
 npm start
 ```
+The frontend opens at `http://localhost:3000`. To run its tests or create a production build, use `npm test` or `npm run build` from the `frontend` directory.
 
 ### 6. Load sample data (optional)
 ```bash
