@@ -6,6 +6,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user_id
 from app.models.models import Group, GroupMember
 from app.schemas.schemas import GroupCreate, GroupOut
+from app.api.dependencies import require_active_group_member
 import uuid
 
 router = APIRouter()
@@ -45,6 +46,7 @@ async def list_groups(user_id: str = Depends(get_current_user_id), db: Session =
 
 @router.get("/{group_id}", response_model=GroupOut)
 async def get_group(group_id: str, user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
+    require_active_group_member(group_id, user_id, db)
     group = db.query(Group).filter(Group.id == group_id, Group.is_active == True).first()
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")

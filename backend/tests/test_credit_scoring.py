@@ -12,11 +12,11 @@ def scorer():
 
 @pytest.fixture
 def excellent_raw():
-    return {'group_age_days':1095,'avg_contribution':2000,'stddev_contribution':50,'total_contributions':750000,'active_members':20,'total_ever_members':21,'contribution_amount':2000,'repaid_loans_count':60,'defaulted_loans_count':0,'total_savings':500000,'active_loans_total':80000,'meetings_held_30d':4,'actual_attendance_30d':76,'loans_disbursed_90d':10,'defaults_90d':0}
+    return {'group_age_days':1095,'avg_contribution':2000,'stddev_contribution':50,'contribution_count':60,'total_contributions':750000,'active_members':20,'total_ever_members':21,'contribution_amount':2000,'repaid_loans_count':60,'defaulted_loans_count':0,'total_savings':500000,'active_loans_total':80000,'meetings_held_30d':4,'attendance_records_30d':80,'actual_attendance_30d':76,'loans_disbursed_90d':10,'defaults_90d':0}
 
 @pytest.fixture
 def poor_raw():
-    return {'group_age_days':30,'avg_contribution':500,'stddev_contribution':400,'total_contributions':2000,'active_members':3,'total_ever_members':10,'contribution_amount':1000,'repaid_loans_count':1,'defaulted_loans_count':4,'total_savings':2000,'active_loans_total':30000,'meetings_held_30d':1,'actual_attendance_30d':1,'loans_disbursed_90d':3,'defaults_90d':2}
+    return {'group_age_days':30,'avg_contribution':500,'stddev_contribution':400,'contribution_count':5,'total_contributions':2000,'active_members':3,'total_ever_members':10,'contribution_amount':1000,'repaid_loans_count':1,'defaulted_loans_count':4,'total_savings':2000,'active_loans_total':30000,'meetings_held_30d':1,'attendance_records_30d':3,'actual_attendance_30d':1,'loans_disbursed_90d':3,'defaults_90d':2}
 
 @pytest.fixture
 def zero_raw():
@@ -116,16 +116,33 @@ class TestFeatureEngineering:
         expected = {'group_longevity_months','contribution_cv','contribution_reliability','repayment_rate','liquidity_ratio','member_stability','attendance_rate','recent_default_rate'}
         assert expected == set(features.keys())
 
-    def test_zero_loans_perfect_repayment(self):
+    def test_zero_loans_repayment_is_unavailable(self):
         raw = {k: 0 for k in ['group_age_days','avg_contribution','stddev_contribution','total_contributions','active_members','total_ever_members','contribution_amount','repaid_loans_count','defaulted_loans_count','total_savings','active_loans_total','meetings_held_30d','actual_attendance_30d','loans_disbursed_90d','defaults_90d']}
         features = engineer_features_from_raw(raw)
-        assert features['repayment_rate'] == 1.0
-        assert features['recent_default_rate'] == 0.0
+        assert features['repayment_rate'] is None
+        assert features['recent_default_rate'] is None
 
-    def test_no_active_loans_max_liquidity(self):
+    def test_no_active_loans_has_unavailable_liquidity(self):
         raw = {k: 0 for k in ['group_age_days','avg_contribution','stddev_contribution','total_contributions','active_members','total_ever_members','contribution_amount','repaid_loans_count','defaulted_loans_count','total_savings','active_loans_total','meetings_held_30d','actual_attendance_30d','loans_disbursed_90d','defaults_90d']}
+        raw["total_savings"] = 500000
         features = engineer_features_from_raw(raw)
-        assert features['liquidity_ratio'] == 10.0
+        assert features['liquidity_ratio'] is None
+
+    def test_real_contribution_variability_and_attendance_are_used(self, excellent_raw):
+        features = engineer_features_from_raw(excellent_raw)
+        assert features["contribution_cv"] == 0.025
+        assert features["attendance_rate"] == 0.95
+
+    def test_missing_evidence_is_explicit_and_neutral(self, scorer, zero_raw):
+        features = engineer_features_from_raw(zero_raw)
+        score, breakdown = scorer.calculate_score(features)
+        assert breakdown["repayment_rate"].available is False
+        assert breakdown["repayment_rate"].value is None
+        assert breakdown["repayment_rate"].rating == "insufficient_data"
+        assert breakdown["repayment_rate"].contribution == 12.5
+        assert breakdown["contribution_cv"].available is False
+        assert breakdown["attendance_rate"].available is False
+        assert score < 600
 
     def test_longevity_in_months(self):
         raw = {k: 0 for k in ['group_age_days','avg_contribution','stddev_contribution','total_contributions','active_members','total_ever_members','contribution_amount','repaid_loans_count','defaulted_loans_count','total_savings','active_loans_total','meetings_held_30d','actual_attendance_30d','loans_disbursed_90d','defaults_90d']}
@@ -153,3 +170,8 @@ class TestRecommendations:
         assert isinstance(log, str)
         assert 'CHAMASCORE' in log
         assert str(score) in log
+
+    def test_unavailable_metrics_recommend_recording_data(self, scorer, zero_raw):
+        _, breakdown = scorer.calculate_score(engineer_features_from_raw(zero_raw))
+        recommendations = scorer.generate_recommendations(breakdown)
+        assert any("record more data" in item.lower() for item in recommendations)

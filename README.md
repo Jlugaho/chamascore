@@ -37,6 +37,8 @@ ChamaScore uses a weighted heuristic model with 8 features:
 | Attendance Rate | 5% | Meeting attendance last 30 days |
 | Recent Default Rate | 5% | Defaults in last 90 days |
 
+Metrics without enough recorded history are marked as unavailable and receive a neutral contribution to the total score; they are not treated as perfect repayment, liquidity, consistency, or attendance. Scores and recommendations identify when additional records are needed.
+
 **Score Bands:**
 - 750–850: Excellent
 - 660–749: Very Good
@@ -69,7 +71,7 @@ chamascore/
 │   │   ├── models/       # SQLAlchemy models
 │   │   ├── schemas/      # Pydantic schemas
 │   │   └── scoring/      # Credit scoring engine
-│   └── tests/            # 25 unit tests
+│   └── tests/            # Backend unit and API tests
 ├── frontend/
 │   └── src/
 │       ├── pages/        # Login, Register, Dashboard, GroupDetail
@@ -153,6 +155,8 @@ Key endpoints:
 - `POST /api/v1/contributions/` — Record a contribution
 - `POST /api/v1/loans/apply` — Apply for a loan
 
+Loan approval votes are limited to active group members, each member may vote once per loan, and a loan is approved when at least 70% of active members vote yes.
+
 ---
 
 ## Running Tests
@@ -161,7 +165,7 @@ cd backend
 pytest tests/ -v --cov=app/scoring --cov-report=term-missing
 ```
 
-**Results:** 25 tests, 98% coverage
+The suite includes coverage for score feature availability, recorded metric aggregation, loan voting, and membership authorization.
 
 ---
 

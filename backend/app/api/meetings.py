@@ -5,12 +5,14 @@ from app.core.database import get_db
 from app.core.security import get_current_user_id
 from app.models.models import Meeting
 from app.schemas.schemas import MeetingCreate, MeetingOut
+from app.api.dependencies import require_active_group_member
 import uuid
 
 router = APIRouter()
 
 @router.post("", response_model=MeetingOut, status_code=201)
 async def create_meeting(data: MeetingCreate, user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
+    require_active_group_member(data.group_id, user_id, db)
     meeting = Meeting(
         id=str(uuid.uuid4()),
         group_id=data.group_id,
@@ -25,4 +27,5 @@ async def create_meeting(data: MeetingCreate, user_id: str = Depends(get_current
 
 @router.get("/group/{group_id}", response_model=List[MeetingOut])
 async def list_meetings(group_id: str, user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
+    require_active_group_member(group_id, user_id, db)
     return db.query(Meeting).filter(Meeting.group_id == group_id).order_by(Meeting.date.desc()).all()

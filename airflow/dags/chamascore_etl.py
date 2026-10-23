@@ -83,23 +83,45 @@ def calculate_scores(**context):
                 SELECT
                     g.created_date,
                     g.contribution_amount,
-                    COUNT(DISTINCT CASE WHEN gm.is_active THEN gm.user_id END) as active_members,
-                    COUNT(DISTINCT gm.user_id) as total_members,
-                    COALESCE(SUM(c.amount), 0) as total_contributions,
-                    COALESCE(AVG(c.amount), 0) as avg_contribution,
-                    COUNT(DISTINCT CASE WHEN l.status = 'repaid' THEN l.id END) as repaid_loans,
-                    COUNT(DISTINCT CASE WHEN l.status = 'defaulted' THEN l.id END) as defaulted_loans,
-                    COALESCE(SUM(CASE WHEN l.status = 'active' THEN l.amount ELSE 0 END), 0) as active_loans_total,
-                    COUNT(DISTINCT m.id) as meetings_30d
+                    (SELECT COUNT(*) FROM group_members gm
+                     WHERE gm.group_id = g.id AND gm.is_active = TRUE) as active_members,
+                    (SELECT COUNT(*) FROM group_members gm
+                     WHERE gm.group_id = g.id) as total_members,
+                    (SELECT COALESCE(SUM(c.amount), 0) FROM contributions c
+                     WHERE c.group_id = g.id) as total_contributions,
+                    (SELECT COALESCE(AVG(c.amount), 0) FROM contributions c
+                     WHERE c.group_id = g.id) as avg_contribution,
+                    (SELECT COALESCE(STDDEV_POP(c.amount), 0) FROM contributions c
+                     WHERE c.group_id = g.id) as stddev_contribution,
+                    (SELECT COUNT(*) FROM contributions c
+                     WHERE c.group_id = g.id) as contribution_count,
+                    (SELECT COUNT(*) FROM loans l
+                     WHERE l.group_id = g.id AND l.status = 'repaid') as repaid_loans,
+                    (SELECT COUNT(*) FROM loans l
+                     WHERE l.group_id = g.id AND l.status = 'defaulted') as defaulted_loans,
+                    (SELECT COALESCE(SUM(l.amount), 0) FROM loans l
+                     WHERE l.group_id = g.id AND l.status = 'active') as active_loans_total,
+                    (SELECT COUNT(*) FROM meetings m
+                     WHERE m.group_id = g.id AND m.date >= :thirty_days_ago) as meetings_30d,
+                    (SELECT COUNT(*) FROM meeting_attendance ma
+                     JOIN meetings m ON m.id = ma.meeting_id
+                     WHERE m.group_id = g.id AND m.date >= :thirty_days_ago) as attendance_records_30d,
+                    (SELECT COUNT(*) FROM meeting_attendance ma
+                     JOIN meetings m ON m.id = ma.meeting_id
+                     WHERE m.group_id = g.id AND m.date >= :thirty_days_ago
+                       AND ma.attended = TRUE) as actual_attendance_30d,
+                    (SELECT COUNT(*) FROM loans l
+                     WHERE l.group_id = g.id AND l.application_date >= :ninety_days_ago) as loans_90d,
+                    (SELECT COUNT(*) FROM loans l
+                     WHERE l.group_id = g.id AND l.status = 'defaulted'
+                       AND l.application_date >= :ninety_days_ago) as defaults_90d
                 FROM groups g
-                LEFT JOIN group_members gm ON g.id = gm.group_id
-                LEFT JOIN contributions c ON g.id = c.group_id
-                LEFT JOIN loans l ON g.id = l.group_id
-                LEFT JOIN meetings m ON g.id = m.group_id
-                    AND m.date >= :thirty_days_ago
                 WHERE g.id = :group_id
-                GROUP BY g.id, g.created_date, g.contribution_amount
-            """), {'group_id': group['id'], 'thirty_days_ago': today - timedelta(days=30)}).fetchone()
+            """), {
+                'group_id': group['id'],
+                'thirty_days_ago': today - timedelta(days=30),
+                'ninety_days_ago': today - timedelta(days=90),
+            }).fetchone()
 
             if not row:
                 continue
@@ -107,19 +129,21 @@ def calculate_scores(**context):
             raw = {
                 'group_age_days': (today - row[0]).days if row[0] else 0,
                 'contribution_amount': float(row[1] or 0),
-                'active_members': row[2] or 1,
-                'total_ever_members': row[3] or 1,
+                'active_members': row[2] or 0,
+                'total_ever_members': row[3] or 0,
                 'total_contributions': float(row[4] or 0),
                 'avg_contribution': float(row[5] or 0),
-                'stddev_contribution': 0,
-                'repaid_loans_count': row[6] or 0,
-                'defaulted_loans_count': row[7] or 0,
+                'stddev_contribution': float(row[6] or 0),
+                'contribution_count': row[7] or 0,
+                'repaid_loans_count': row[8] or 0,
+                'defaulted_loans_count': row[9] or 0,
                 'total_savings': float(row[4] or 0),
-                'active_loans_total': float(row[8] or 0),
-                'meetings_held_30d': row[9] or 0,
-                'actual_attendance_30d': (row[9] or 0) * (row[2] or 1),
-                'loans_disbursed_90d': 0,
-                'defaults_90d': 0,
+                'active_loans_total': float(row[10] or 0),
+                'meetings_held_30d': row[11] or 0,
+                'attendance_records_30d': row[12] or 0,
+                'actual_attendance_30d': row[13] or 0,
+                'loans_disbursed_90d': row[14] or 0,
+                'defaults_90d': row[15] or 0,
             }
 
             features = engineer_features_from_raw(raw)
