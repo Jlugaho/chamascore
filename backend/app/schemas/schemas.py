@@ -134,12 +134,14 @@ class MeetingOut(BaseModel):
 
 # ── CREDIT SCORES ─────────────────────────────────────
 class FeatureDetail(BaseModel):
-    value: float
+    value: Optional[float]
     unit: str
     weight: int
     normalized_score: float
     contribution: float
     rating: str
+    available: bool
+    availability_note: Optional[str] = None
 
 class CreditScoreOut(BaseModel):
     group_id: str

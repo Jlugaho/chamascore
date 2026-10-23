@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Numeric, Boolean, Date, DateTime, Text, ForeignKey, JSON
+from sqlalchemy import Column, String, Integer, Numeric, Boolean, Date, DateTime, Text, ForeignKey, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -94,6 +94,7 @@ class LoanRepayment(Base):
 
 class LoanApproval(Base):
     __tablename__ = "loan_approvals"
+    __table_args__ = (UniqueConstraint("loan_id", "member_id", name="uq_loan_approval_member"),)
     id = Column(String, primary_key=True, default=gen_uuid)
     loan_id = Column(String, ForeignKey("loans.id"), nullable=False)
     member_id = Column(String, ForeignKey("users.id"), nullable=False)
@@ -127,6 +128,7 @@ class MeetingAttendance(Base):
 
 class CreditScore(Base):
     __tablename__ = "credit_scores"
+    __table_args__ = (UniqueConstraint("group_id", "score_date", name="uq_group_score_date"),)
     id = Column(String, primary_key=True, default=gen_uuid)
     group_id = Column(String, ForeignKey("groups.id"), nullable=False)
     score_date = Column(Date, nullable=False)

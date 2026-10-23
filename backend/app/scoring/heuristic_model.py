@@ -9,12 +9,14 @@ from dataclasses import dataclass
 
 @dataclass
 class FeatureResult:
-    value: float
+    value: float | None
     unit: str
     weight: int
     normalized_score: float
     contribution: float
     rating: str
+    available: bool
+    availability_note: str | None = None
 
 
 class HeuristicCreditScorer:
@@ -73,23 +75,26 @@ class HeuristicCreditScorer:
         elif normalized >= 0.40: return "fair"
         else: return "poor"
 
-    def calculate_score(self, features: Dict[str, float]) -> Tuple[int, Dict[str, FeatureResult]]:
+    def calculate_score(self, features: Dict[str, float | None]) -> Tuple[int, Dict[str, FeatureResult]]:
         total_weighted = 0.0
         breakdown = {}
 
         for feature, weight in self.WEIGHTS.items():
-            raw_value = features.get(feature, 0.0)
-            normalized = self._normalize(feature, raw_value)
+            raw_value = features.get(feature)
+            available = raw_value is not None
+            normalized = self._normalize(feature, raw_value) if available else 0.5
             contribution = normalized * weight
             total_weighted += contribution
             _, unit = self.FEATURE_META[feature]
             breakdown[feature] = FeatureResult(
-                value=round(raw_value, 4),
+                value=round(raw_value, 4) if available else None,
                 unit=unit,
                 weight=weight,
                 normalized_score=round(normalized, 4),
                 contribution=round(contribution, 2),
-                rating=self._get_rating(normalized),
+                rating=self._get_rating(normalized) if available else "insufficient_data",
+                available=available,
+                availability_note=None if available else "Insufficient recorded data",
             )
 
         score = int(round(float(np.clip(
@@ -118,18 +123,32 @@ class HeuristicCreditScorer:
             "recent_default_rate": "Prioritize repaying recent overdue loans to clear your 90-day default record.",
         }
         for feature, result in breakdown.items():
-            if result.rating in ("poor", "fair"):
+            if not result.available:
+                recommendations.append(
+                    f"Record more data for {self.FEATURE_META[feature][0].lower()} to include it in future scores."
+                )
+            elif result.rating in ("poor", "fair"):
                 if feature in messages:
                     recommendations.append(messages[feature])
         if not recommendations:
             recommendations.append("Your group is performing well across all metrics. Keep up the excellent financial discipline!")
         return recommendations
 
-    def generate_calculation_log(self, features: Dict[str, float], breakdown: Dict[str, FeatureResult], score: int) -> str:
+    def generate_calculation_log(self, features: Dict[str, float | None], breakdown: Dict[str, FeatureResult], score: int) -> str:
         lines = ["=" * 55, "CHAMASCORE CREDIT SCORE CALCULATION LOG", "=" * 55, ""]
         total = 0.0
         for feature, result in breakdown.items():
             display_name, _ = self.FEATURE_META[feature]
+            if not result.available:
+                lines += [
+                    f"Feature : {display_name}",
+                    f"  Status     : {result.availability_note}",
+                    f"  Weight     : {result.weight}%",
+                    f"  Contribution: {result.contribution:.2f} pts (neutral)",
+                    "",
+                ]
+                total += result.contribution
+                continue
             lines += [
                 f"Feature : {display_name}",
                 f"  Raw Value  : {result.value} {result.unit}",
@@ -149,41 +168,58 @@ class HeuristicCreditScorer:
         return "\n".join(lines)
 
 
-def engineer_features_from_raw(raw: Dict[str, Any]) -> Dict[str, float]:
+def engineer_features_from_raw(raw: Dict[str, Any]) -> Dict[str, float | None]:
     features = {}
 
     features["group_longevity_months"] = raw.get("group_age_days", 0) / 30.0
 
-    avg = raw.get("avg_contribution", 1) or 1
-    std = raw.get("stddev_contribution", 0) or 0
-    features["contribution_cv"] = std / avg
+    contribution_count = raw.get("contribution_count")
+    avg = raw.get("avg_contribution")
+    std = raw.get("stddev_contribution")
+    if contribution_count is None:
+        contribution_count = 0
+    features["contribution_cv"] = (
+        float(std) / float(avg)
+        if contribution_count >= 2 and avg and std is not None
+        else None
+    )
 
-    active = raw.get("active_members", 0) or 1
+    active = raw.get("active_members", 0) or 0
     months = max(raw.get("group_age_days", 1) / 30.0, 1)
-    contrib_amount = float(raw.get("contribution_amount", 0) or 1)
+    contrib_amount = float(raw.get("contribution_amount", 0) or 0)
     expected = active * months * contrib_amount
     actual = float(raw.get("total_contributions", 0) or 0)
-    features["contribution_reliability"] = float(np.clip(actual / expected if expected > 0 else 1.0, 0, 1))
+    features["contribution_reliability"] = (
+        float(np.clip(actual / expected, 0, 1)) if expected > 0 else None
+    )
 
     repaid = float(raw.get("repaid_loans_count", 0) or 0)
     defaulted = float(raw.get("defaulted_loans_count", 0) or 0)
     total_loans = repaid + defaulted
-    features["repayment_rate"] = repaid / total_loans if total_loans > 0 else 1.0
+    features["repayment_rate"] = repaid / total_loans if total_loans > 0 else None
 
     savings = float(raw.get("total_savings", 0) or 0)
     active_loans = float(raw.get("active_loans_total", 0) or 0)
-    features["liquidity_ratio"] = float(np.clip(savings / active_loans, 0, 10)) if active_loans > 0 else 10.0
+    features["liquidity_ratio"] = (
+        float(np.clip(savings / active_loans, 0, 10)) if active_loans > 0 else None
+    )
 
-    total_members = raw.get("total_ever_members", 0) or 1
-    features["member_stability"] = float(np.clip(active / total_members, 0, 1))
+    total_members = raw.get("total_ever_members", 0) or 0
+    features["member_stability"] = (
+        float(np.clip(active / total_members, 0, 1)) if total_members > 0 else None
+    )
 
-    meetings = raw.get("meetings_held_30d", 0) or 0
-    possible = meetings * active
+    attendance_records = raw.get("attendance_records_30d")
     attended = raw.get("actual_attendance_30d", 0) or 0
-    features["attendance_rate"] = float(np.clip(attended / possible, 0, 1)) if possible > 0 else 1.0
+    features["attendance_rate"] = (
+        float(np.clip(attended / attendance_records, 0, 1))
+        if attendance_records and attendance_records > 0 else None
+    )
 
     loans_90d = raw.get("loans_disbursed_90d", 0) or 0
     defaults_90d = raw.get("defaults_90d", 0) or 0
-    features["recent_default_rate"] = float(np.clip(defaults_90d / loans_90d, 0, 0.5)) if loans_90d > 0 else 0.0
+    features["recent_default_rate"] = (
+        float(np.clip(defaults_90d / loans_90d, 0, 0.5)) if loans_90d > 0 else None
+    )
 
     return features

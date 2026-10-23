@@ -156,11 +156,14 @@ export default function GroupDetail({ group, user, onBack }: Props) {
                     <div key={key} style={{ marginBottom: 12 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 13 }}>
                         <span style={{ color: '#374151', fontWeight: 500 }}>{key.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
-                        <span style={{ color: f.rating === 'excellent' ? '#059669' : f.rating === 'very_good' ? '#3b82f6' : f.rating === 'good' ? '#8b5cf6' : f.rating === 'fair' ? '#f59e0b' : '#ef4444', fontWeight: 600, textTransform: 'capitalize' }}>{f.rating.replace('_', ' ')}</span>
+                        <span style={{ color: !f.available ? '#6b7280' : f.rating === 'excellent' ? '#059669' : f.rating === 'very_good' ? '#3b82f6' : f.rating === 'good' ? '#8b5cf6' : f.rating === 'fair' ? '#f59e0b' : '#ef4444', fontWeight: 600, textTransform: 'capitalize' }}>
+                          {f.available ? f.rating.replace('_', ' ') : f.availability_note || 'Insufficient data'}
+                        </span>
                       </div>
                       <div style={{ background: '#f3f4f6', borderRadius: 99, height: 6 }}>
-                        <div style={{ width: `${f.normalized_score * 100}%`, background: f.rating === 'excellent' ? '#059669' : f.rating === 'very_good' ? '#3b82f6' : f.rating === 'good' ? '#8b5cf6' : f.rating === 'fair' ? '#f59e0b' : '#ef4444', height: '100%', borderRadius: 99 }} />
+                        <div style={{ width: `${f.available ? f.normalized_score * 100 : 0}%`, background: !f.available ? '#9ca3af' : f.rating === 'excellent' ? '#059669' : f.rating === 'very_good' ? '#3b82f6' : f.rating === 'good' ? '#8b5cf6' : f.rating === 'fair' ? '#f59e0b' : '#ef4444', height: '100%', borderRadius: 99 }} />
                       </div>
+                      {!f.available && <div style={{ fontSize: 11, color: '#6b7280', marginTop: 3 }}>This metric contributes a neutral value until enough data is recorded.</div>}
                     </div>
                   ))}
                 </div>
