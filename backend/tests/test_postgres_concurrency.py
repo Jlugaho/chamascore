@@ -34,7 +34,7 @@ def test_postgres_serializes_distinct_and_duplicate_votes():
             id=str(uuid.uuid4()),
             email=f"{uuid.uuid4()}@example.com",
             phone=f"07{index:08d}",
-            national_id=str(uuid.uuid4()),
+            national_id=f"{index:08d}",
             full_name=f"Member {index}",
             password_hash="unused",
         )
