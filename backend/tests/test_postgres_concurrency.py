@@ -48,17 +48,9 @@ def test_postgres_serializes_distinct_and_duplicate_votes():
         created_date=date.today(),
         created_by=users[0].id,
     )
-    loan = Loan(
-        id=loan_id,
-        group_id=group_id,
-        member_id=users[0].id,
-        amount=500,
-        application_date=date.today(),
-        repayment_date=date.today(),
-    )
     with test_session() as db:
-        db.add_all([*users, group, loan])
-        db.flush()
+        db.add_all([*users, group])
+        db.commit()
         db.add_all([
             GroupMember(
                 id=str(uuid.uuid4()),
@@ -68,6 +60,17 @@ def test_postgres_serializes_distinct_and_duplicate_votes():
             )
             for user in users
         ])
+        db.commit()
+        db.add(
+            Loan(
+                id=loan_id,
+                group_id=group_id,
+                member_id=users[0].id,
+                amount=500,
+                application_date=date.today(),
+                repayment_date=date.today(),
+            )
+        )
         db.commit()
 
     try:
