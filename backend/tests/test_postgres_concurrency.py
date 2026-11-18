@@ -40,13 +40,14 @@ def test_postgres_serializes_distinct_and_duplicate_votes():
         )
         for index in range(1, 6)
     ]
+    user_ids = [user.id for user in users]
     group = Group(
         id=group_id,
         name="Concurrent Votes",
         contribution_amount=100,
         meeting_frequency="monthly",
         created_date=date.today(),
-        created_by=users[0].id,
+        created_by=user_ids[0],
     )
     with test_session() as db:
         db.add_all([*users, group])
@@ -54,18 +55,18 @@ def test_postgres_serializes_distinct_and_duplicate_votes():
         db.add_all([
             GroupMember(
                 id=str(uuid.uuid4()),
-                user_id=user.id,
+                user_id=user_id,
                 group_id=group_id,
                 joined_date=date.today(),
             )
-            for user in users
+            for user_id in user_ids
         ])
         db.commit()
         db.add(
             Loan(
                 id=loan_id,
                 group_id=group_id,
-                member_id=users[0].id,
+                member_id=user_ids[0],
                 amount=500,
                 application_date=date.today(),
                 repayment_date=date.today(),
@@ -82,7 +83,7 @@ def test_postgres_serializes_distinct_and_duplicate_votes():
                 return asyncio.run(approve_loan(loan_id, True, voter_id, db))
 
         with ThreadPoolExecutor(max_workers=4) as executor:
-            results = list(executor.map(cast_vote, [user.id for user in users[:4]]))
+            results = list(executor.map(cast_vote, user_ids[:4]))
 
         assert sorted(result["yes_votes"] for result in results) == [1, 2, 3, 4]
         with test_session() as db:
@@ -94,7 +95,7 @@ def test_postgres_serializes_distinct_and_duplicate_votes():
                 Loan(
                     id=duplicate_loan_id,
                     group_id=group_id,
-                    member_id=users[0].id,
+                    member_id=user_ids[0],
                     amount=250,
                     application_date=date.today(),
                     repayment_date=date.today(),
@@ -107,7 +108,7 @@ def test_postgres_serializes_distinct_and_duplicate_votes():
         def cast_duplicate_vote():
             duplicate_barrier.wait(timeout=10)
             with test_session() as db:
-                return asyncio.run(approve_loan(duplicate_loan_id, True, users[1].id, db))
+                return asyncio.run(approve_loan(duplicate_loan_id, True, user_ids[1], db))
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             futures = [executor.submit(cast_duplicate_vote) for _ in range(2)]
