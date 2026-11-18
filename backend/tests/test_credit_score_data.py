@@ -20,7 +20,11 @@ from app.models.models import (
     CreditScore,
     User,
 )
-from app.scoring.heuristic_model import engineer_features_from_raw
+from app.scoring.heuristic_model import (
+    HeuristicCreditScorer,
+    engineer_features_from_raw,
+    score_from_raw,
+)
 
 
 def test_raw_score_metrics_use_contribution_variability_and_recorded_attendance():
@@ -105,6 +109,7 @@ def test_raw_score_metrics_use_contribution_variability_and_recorded_attendance(
 
         raw = get_raw_data(group.id, db)
         features = engineer_features_from_raw(raw)
+        calculation = score_from_raw(raw, HeuristicCreditScorer())
 
         assert raw["contribution_count"] == 2
         assert raw["stddev_contribution"] == 100
@@ -114,9 +119,14 @@ def test_raw_score_metrics_use_contribution_variability_and_recorded_attendance(
         assert features["attendance_rate"] == 0.5
 
         score = asyncio.run(get_credit_score(group.id, users[0].id, db))
+        assert score.score_value == calculation.score
+        assert score.score_band == calculation.band
         assert score.features["repayment_rate"].value is None
         assert score.features["repayment_rate"].available is False
         assert score.features["liquidity_ratio"].available is False
+        saved_score = db.query(CreditScore).filter(CreditScore.group_id == group.id).one()
+        assert saved_score.features_json == calculation.features_json
+        assert saved_score.calculation_log == calculation.calculation_log
 
         asyncio.run(get_credit_score(group.id, users[0].id, db))
         assert db.query(CreditScore).filter(CreditScore.group_id == group.id).count() == 1

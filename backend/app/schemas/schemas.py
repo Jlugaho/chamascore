@@ -8,9 +8,9 @@ import re
 # ── AUTH ──────────────────────────────────────────────
 class UserCreate(BaseModel):
     email: EmailStr
-    phone: str
-    national_id: str
-    full_name: str
+    phone: str = Field(..., min_length=1, max_length=20)
+    national_id: str = Field(..., min_length=1, max_length=20)
+    full_name: str = Field(..., min_length=1, max_length=255)
     password: str
 
     @validator("phone")
@@ -76,10 +76,10 @@ class GroupOut(BaseModel):
 class ContributionCreate(BaseModel):
     group_id: str
     member_id: str
-    amount: Decimal = Field(..., gt=0)
+    amount: Decimal = Field(..., gt=0, max_digits=10, decimal_places=2)
     contribution_date: date
-    payment_method: str = "mpesa"
-    notes: Optional[str] = None
+    payment_method: str = Field(default="mpesa", min_length=1, max_length=50)
+    notes: Optional[str] = Field(default=None, max_length=10000)
 
 class ContributionOut(BaseModel):
     id: str
@@ -96,10 +96,10 @@ class ContributionOut(BaseModel):
 # ── LOANS ─────────────────────────────────────────────
 class LoanApplication(BaseModel):
     group_id: str
-    amount: Decimal = Field(..., gt=0)
-    purpose: str = Field(..., min_length=5)
+    amount: Decimal = Field(..., gt=0, max_digits=10, decimal_places=2)
+    purpose: str = Field(..., min_length=5, max_length=255)
     repayment_date: date
-    interest_rate: Decimal = Field(default=10.0, ge=0, le=100)
+    interest_rate: Decimal = Field(default=10.0, ge=0, le=100, decimal_places=2)
 
 class LoanOut(BaseModel):
     id: str
@@ -118,9 +118,9 @@ class LoanOut(BaseModel):
 # ── MEETINGS ──────────────────────────────────────────
 class MeetingCreate(BaseModel):
     group_id: str
-    title: str = Field(..., min_length=3)
+    title: str = Field(..., min_length=3, max_length=255)
     date: datetime
-    agenda: Optional[str] = None
+    agenda: Optional[str] = Field(default=None, max_length=10000)
 
 class MeetingOut(BaseModel):
     id: str

@@ -1,21 +1,22 @@
 services:
-
   postgres:
     image: postgres:15-alpine
     container_name: chamascore-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: chamascore
-      POSTGRES_PASSWORD: pass123
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
       POSTGRES_DB: chamascore
-      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf
+      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    command: ["postgres", "-c", "hba_file=/etc/postgresql/pg_hba.conf"]
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U chamascore"]
+      test: ["CMD-SHELL", "pg_isready -U chamascore -d chamascore"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -26,12 +27,14 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow123
+      POSTGRES_PASSWORD: "${AIRFLOW_DB_PASSWORD:?Set AIRFLOW_DB_PASSWORD in .env}"
       POSTGRES_DB: airflow
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
     volumes:
       - airflow_db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -44,13 +47,13 @@ services:
         condition: service_healthy
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow123@airflow-postgres/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@airflow-postgres:5432/airflow"
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-      AIRFLOW__WEBSERVER__SECRET_KEY: chamascore-airflow-secret
+      AIRFLOW__WEBSERVER__SECRET_KEY: "${AIRFLOW_WEB_SECRET_KEY:?Set AIRFLOW_WEB_SECRET_KEY in .env}"
       _AIRFLOW_DB_MIGRATE: "true"
       _AIRFLOW_WWW_USER_CREATE: "true"
       _AIRFLOW_WWW_USER_USERNAME: admin
-      _AIRFLOW_WWW_USER_PASSWORD: admin123
+      _AIRFLOW_WWW_USER_PASSWORD: "${AIRFLOW_ADMIN_PASSWORD:?Set AIRFLOW_ADMIN_PASSWORD in .env}"
       _AIRFLOW_WWW_USER_EMAIL: admin@chamascore.co.ke
       _AIRFLOW_WWW_USER_FIRSTNAME: Admin
       _AIRFLOW_WWW_USER_LASTNAME: ChamaScore
@@ -69,16 +72,16 @@ services:
         condition: service_completed_successfully
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow123@airflow-postgres/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@airflow-postgres:5432/airflow"
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-      AIRFLOW__WEBSERVER__SECRET_KEY: chamascore-airflow-secret
-      CHAMASCORE_DB_URL: postgresql://chamascore:pass123@postgres:5432/chamascore
+      AIRFLOW__WEBSERVER__SECRET_KEY: "${AIRFLOW_WEB_SECRET_KEY:?Set AIRFLOW_WEB_SECRET_KEY in .env}"
+      CHAMASCORE_DB_URL: "${CHAMASCORE_DB_URL:?Set CHAMASCORE_DB_URL in .env}"
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./backend/app:/opt/airflow/app
       - airflow_logs:/opt/airflow/logs
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     command: webserver
 
   airflow-scheduler:
@@ -92,10 +95,10 @@ services:
         condition: service_completed_successfully
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow123@airflow-postgres/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@airflow-postgres:5432/airflow"
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-      AIRFLOW__WEBSERVER__SECRET_KEY: chamascore-airflow-secret
-      CHAMASCORE_DB_URL: postgresql://chamascore:pass123@postgres:5432/chamascore
+      AIRFLOW__WEBSERVER__SECRET_KEY: "${AIRFLOW_WEB_SECRET_KEY:?Set AIRFLOW_WEB_SECRET_KEY in .env}"
+      CHAMASCORE_DB_URL: "${CHAMASCORE_DB_URL:?Set CHAMASCORE_DB_URL in .env}"
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./backend/app:/opt/airflow/app
