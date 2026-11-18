@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import date
@@ -39,10 +39,23 @@ async def create_group(data: GroupCreate, user_id: str = Depends(get_current_use
     return group
 
 @router.get("", response_model=List[GroupOut])
-async def list_groups(user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
-    memberships = db.query(GroupMember).filter(GroupMember.user_id == user_id, GroupMember.is_active == True).all()
-    group_ids = [m.group_id for m in memberships]
-    return db.query(Group).filter(Group.id.in_(group_ids), Group.is_active == True).all()
+async def list_groups(
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
+    return db.query(Group).join(
+        GroupMember,
+        GroupMember.group_id == Group.id,
+    ).filter(
+        GroupMember.user_id == user_id,
+        GroupMember.is_active.is_(True),
+        Group.is_active.is_(True),
+    ).order_by(
+        Group.name,
+        Group.id,
+    ).offset(offset).limit(limit).all()
 
 @router.get("/{group_id}", response_model=GroupOut)
 async def get_group(group_id: str, user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):

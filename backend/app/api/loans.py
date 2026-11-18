@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from typing import List
@@ -33,20 +33,38 @@ async def apply_loan(data: LoanApplication, user_id: str = Depends(get_current_u
     return loan
 
 @router.get("/group/{group_id}", response_model=List[LoanOut])
-async def list_loans(group_id: str, user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
+async def list_loans(
+    group_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
     require_active_group_member(group_id, user_id, db)
-    return db.query(Loan).filter(Loan.group_id == group_id).order_by(Loan.application_date.desc()).all()
+    return db.query(Loan).filter(
+        Loan.group_id == group_id,
+    ).order_by(
+        Loan.application_date.desc(),
+        Loan.id,
+    ).offset(offset).limit(limit).all()
 
 @router.post("/{loan_id}/approve")
 async def approve_loan(loan_id: str, approved: bool, user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
-    # Lock the loan before checking for an existing vote so concurrent requests
-    # for this loan are serialized on both PostgreSQL and SQLite.
-    locked = db.query(Loan).filter(Loan.id == loan_id).update(
-        {Loan.status: Loan.status}, synchronize_session=False
-    )
-    if not locked:
+    loan_query = db.query(Loan).filter(Loan.id == loan_id)
+    dialect = db.get_bind().dialect.name
+    if dialect == "postgresql":
+        loan = loan_query.with_for_update().first()
+    elif dialect == "sqlite":
+        # SQLite has no row-level locks; acquire its write lock before reading votes.
+        locked = loan_query.update(
+            {Loan.status: Loan.status},
+            synchronize_session=False,
+        )
+        loan = loan_query.first() if locked else None
+    else:
+        raise RuntimeError(f"Loan voting locks are not supported for database dialect {dialect}")
+    if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
-    loan = db.query(Loan).filter(Loan.id == loan_id).first()
     require_active_group_member(loan.group_id, user_id, db)
     if loan.approval_status != "pending":
         raise HTTPException(status_code=409, detail="Loan voting is closed")

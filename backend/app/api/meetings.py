@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from typing import List
 from app.core.database import get_db
@@ -26,6 +26,17 @@ async def create_meeting(data: MeetingCreate, user_id: str = Depends(get_current
     return meeting
 
 @router.get("/group/{group_id}", response_model=List[MeetingOut])
-async def list_meetings(group_id: str, user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
+async def list_meetings(
+    group_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
     require_active_group_member(group_id, user_id, db)
-    return db.query(Meeting).filter(Meeting.group_id == group_id).order_by(Meeting.date.desc()).all()
+    return db.query(Meeting).filter(
+        Meeting.group_id == group_id,
+    ).order_by(
+        Meeting.date.desc(),
+        Meeting.id,
+    ).offset(offset).limit(limit).all()

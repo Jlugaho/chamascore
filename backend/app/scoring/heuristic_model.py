@@ -19,6 +19,17 @@ class FeatureResult:
     availability_note: str | None = None
 
 
+@dataclass
+class ScoreCalculation:
+    features: Dict[str, float | None]
+    score: int
+    band: str
+    breakdown: Dict[str, FeatureResult]
+    recommendations: List[str]
+    calculation_log: str
+    features_json: Dict[str, Dict[str, Any]]
+
+
 class HeuristicCreditScorer:
 
     SCORE_MIN = 300
@@ -223,3 +234,25 @@ def engineer_features_from_raw(raw: Dict[str, Any]) -> Dict[str, float | None]:
     )
 
     return features
+
+
+def score_from_raw(raw: Dict[str, Any], scorer: HeuristicCreditScorer) -> ScoreCalculation:
+    features = engineer_features_from_raw(raw)
+    score, breakdown = scorer.calculate_score(features)
+    return ScoreCalculation(
+        features=features,
+        score=score,
+        band=scorer.get_score_band(score),
+        breakdown=breakdown,
+        recommendations=scorer.generate_recommendations(breakdown),
+        calculation_log=scorer.generate_calculation_log(features, breakdown, score),
+        features_json={
+            key: {
+                "value": result.value,
+                "rating": result.rating,
+                "available": result.available,
+                "availability_note": result.availability_note,
+            }
+            for key, result in breakdown.items()
+        },
+    )

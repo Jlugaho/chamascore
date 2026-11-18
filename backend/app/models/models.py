@@ -1,4 +1,17 @@
-from sqlalchemy import Column, String, Integer, Numeric, Boolean, Date, DateTime, Text, ForeignKey, JSON, UniqueConstraint
+from sqlalchemy import (
+    Column,
+    String,
+    Integer,
+    Numeric,
+    Boolean,
+    Date,
+    DateTime,
+    Text,
+    ForeignKey,
+    ForeignKeyConstraint,
+    JSON,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -42,6 +55,9 @@ class Group(Base):
 
 class GroupMember(Base):
     __tablename__ = "group_members"
+    __table_args__ = (
+        UniqueConstraint("group_id", "user_id", name="uq_group_member_user"),
+    )
     id = Column(String, primary_key=True, default=gen_uuid)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     group_id = Column(String, ForeignKey("groups.id"), nullable=False)
@@ -53,6 +69,13 @@ class GroupMember(Base):
 
 class Contribution(Base):
     __tablename__ = "contributions"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["group_id", "member_id"],
+            ["group_members.group_id", "group_members.user_id"],
+            name="fk_contribution_group_member",
+        ),
+    )
     id = Column(String, primary_key=True, default=gen_uuid)
     group_id = Column(String, ForeignKey("groups.id"), nullable=False)
     member_id = Column(String, ForeignKey("users.id"), nullable=False)
@@ -66,6 +89,13 @@ class Contribution(Base):
 
 class Loan(Base):
     __tablename__ = "loans"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["group_id", "member_id"],
+            ["group_members.group_id", "group_members.user_id"],
+            name="fk_loan_group_member",
+        ),
+    )
     id = Column(String, primary_key=True, default=gen_uuid)
     group_id = Column(String, ForeignKey("groups.id"), nullable=False)
     member_id = Column(String, ForeignKey("users.id"), nullable=False)
@@ -118,6 +148,9 @@ class Meeting(Base):
 
 class MeetingAttendance(Base):
     __tablename__ = "meeting_attendance"
+    __table_args__ = (
+        UniqueConstraint("meeting_id", "member_id", name="uq_meeting_attendance_member"),
+    )
     id = Column(String, primary_key=True, default=gen_uuid)
     meeting_id = Column(String, ForeignKey("meetings.id"), nullable=False)
     member_id = Column(String, ForeignKey("users.id"), nullable=False)

@@ -57,7 +57,7 @@ Metrics without enough recorded history are marked as unavailable and receive a 
 | Database | PostgreSQL 15 (Docker) |
 | ETL Pipeline | Apache Airflow 2.7 (Docker) |
 | Auth | JWT (python-jose, bcrypt) |
-| Testing | pytest, 98% coverage |
+| Testing | pytest, FastAPI tests, PostgreSQL integration checks |
 
 ---
 
@@ -103,6 +103,9 @@ cd chamascore
 cp .env.example .env
 # Edit .env with your settings
 ```
+The example values are placeholders for local development. Replace the database passwords and Airflow keys before starting Compose; use URL-safe database passwords because they are embedded in connection URLs. The database and Airflow ports bind to localhost, and PostgreSQL host connections require SCRAM password authentication. On existing database volumes, preserve the current database passwords or rotate the database roles before changing the environment values; do not delete data volumes to rotate credentials.
+
+In production, set `APP_ENV=production`, provide `DATABASE_URL` and `SECRET_KEY` through the deployment's secret manager, and set `CORS_ORIGINS` to the exact deployed web origins. The backend rejects an implicit database default, the development/default key, and keys shorter than 32 characters. Never commit a real secret.
 
 ### 3. Start PostgreSQL and Airflow
 ```bash
@@ -115,8 +118,10 @@ cd backend
 python -m venv venv
 source venv/Scripts/activate  # Windows
 pip install -r requirements.txt
+python -m alembic upgrade head
 uvicorn app.main:app --reload
 ```
+The backend no longer creates database tables during import. For an existing database created by the former `create_all` startup behavior, back it up and verify its schema matches the initial migration. Mark that existing schema with `python -m alembic stamp 51890b7b7b3b`, then run `python -m alembic upgrade head` to apply the later integrity constraints; do not run the initial create migration against tables that already exist. Resolve duplicate memberships/attendance and cross-group financial records before upgrading, because the integrity migration will reject them rather than discard data.
 
 ### 5. Start the frontend
 ```bash
@@ -155,6 +160,10 @@ Key endpoints:
 - `GET /api/v1/credit-scores/group/{id}` — Get credit score with breakdown
 - `POST /api/v1/contributions/` — Record a contribution
 - `POST /api/v1/loans/apply` — Apply for a loan
+- `GET /health/live` — Process liveness
+- `GET /health/ready` — Database and migration readiness
+
+List endpoints accept `limit` (default 100, maximum 500) and `offset` (default 0) query parameters, with a stable ordering for pagination.
 
 Loan approval votes are limited to active group members, each member may vote once per loan, and a loan is approved when at least 70% of active members vote yes.
 
@@ -163,10 +172,10 @@ Loan approval votes are limited to active group members, each member may vote on
 ## Running Tests
 ```bash
 cd backend
-pytest tests/ -v --cov=app/scoring --cov-report=term-missing
+python -m pytest tests/ -v --cov=app --cov-report=term-missing
 ```
 
-The suite includes coverage for score feature availability, recorded metric aggregation, loan voting, and membership authorization.
+The suite includes score feature availability, recorded metric aggregation, API authentication, data integrity, loan voting, and membership authorization. CI is configured to apply migrations to PostgreSQL and run concurrent-vote integration checks; those tests require `TEST_DATABASE_URL` and are skipped in local runs without it.
 
 ---
 
@@ -179,7 +188,7 @@ The `chamascore_daily_scoring` DAG runs every day at midnight EAT (21:00 UTC):
 3. **Load** — upserts scores back to the database
 4. **Summary** — logs a summary of all scores
 
-Access Airflow at: `http://localhost:8080` (admin / admin123)
+Access Airflow at: `http://localhost:8080` using the `admin` username and `AIRFLOW_ADMIN_PASSWORD` from `.env`.
 
 ---
 

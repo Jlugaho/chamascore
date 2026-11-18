@@ -1,13 +1,13 @@
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, Depends
 from datetime import timedelta
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from app.schemas.schemas import UserCreate, UserLogin, TokenResponse, UserOut
 from app.core.security import get_password_hash, verify_password, create_access_token, get_current_user_id
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.models import User
 import uuid
-from datetime import date
 
 router = APIRouter()
 
@@ -17,6 +17,8 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Email already registered")
     if db.query(User).filter(User.phone == user_data.phone).first():
         raise HTTPException(status_code=400, detail="Phone already registered")
+    if db.query(User).filter(User.national_id == user_data.national_id).first():
+        raise HTTPException(status_code=400, detail="National ID already registered")
 
     user = User(
         id=str(uuid.uuid4()),
@@ -27,7 +29,14 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
         password_hash=get_password_hash(user_data.password),
     )
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Registration details already in use",
+        ) from exc
     db.refresh(user)
     return user
 

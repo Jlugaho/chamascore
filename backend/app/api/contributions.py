@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List
 from app.core.database import get_db
@@ -35,6 +35,17 @@ async def record_contribution(data: ContributionCreate, user_id: str = Depends(g
     return contribution
 
 @router.get("/group/{group_id}", response_model=List[ContributionOut])
-async def list_contributions(group_id: str, user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
+async def list_contributions(
+    group_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
     require_active_group_member(group_id, user_id, db)
-    return db.query(Contribution).filter(Contribution.group_id == group_id).order_by(Contribution.contribution_date.desc()).all()
+    return db.query(Contribution).filter(
+        Contribution.group_id == group_id,
+    ).order_by(
+        Contribution.contribution_date.desc(),
+        Contribution.id,
+    ).offset(offset).limit(limit).all()
